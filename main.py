@@ -16,7 +16,7 @@ def pipeline(modelA, modelB, modelC, dataset):
     results_df = analyzer.analyze_dataframe(dataset)
 
     # Masuk ke Sentiment Analysis
-    results_df = None
+    results_df = utils.pipeline_sentiment_analysis(modelB, results_df)
 
     # Masuk ke Task Summarization 
     results_df = utils.pipeline_summarization(modelC, results_df)
@@ -25,4 +25,4 @@ def pipeline(modelA, modelB, modelC, dataset):
     return None
 
 if __name__ == '__main__':
-    result = pipeline('all-MiniLM-L6-v2', None, 'google-t5/t5-small')
+    result = pipeline('all-MiniLM-L6-v2', 'yangheng/deberta-v3-base-absa-v1.1', 'google-t5/t5-small')

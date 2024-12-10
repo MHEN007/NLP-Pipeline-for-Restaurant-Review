@@ -6,7 +6,7 @@ import torch
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import seaborn as sns
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, AutoModelForSequenceClassification, pipeline
 
 class RestaurantTopicAnalyzer:
     def __init__(self, similarity_threshold = 0.3, device = None, embedding_model=None):
@@ -149,6 +149,36 @@ class RestaurantTopicAnalyzer:
         
         plt.tight_layout()
         plt.show()
+
+def extract_aspect_sentiments(dataset, aspects, classifier, max_length=50):
+    for row in tqdm(dataset, desc="Processing rows", unit="row"):
+        text = row['text']
+        for aspect in aspects:
+            # Check if the aspect needs to be analyzed
+            if row[f'topic_{aspect}'] == 1:
+                result = classifier(text, text_pair=aspect)[0]
+                row[f'sentiment_{aspect}'] = result.get("label")
+            else:
+                row[f'sentiment_{aspect}'] = "Not Found"
+    return dataset
+
+def pipeline_sentiment_analysis(model_name, df):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    # print(f"Using device: {device}")
+    device_index = 0 if device == 'cuda' else -1
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSequenceClassification.from_pretrained(model_name)
+
+    classifier = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device_index)
+
+    aspects = ["food", "place", "price", "service"]
+
+    updated_data = extract_aspect_sentiments(df.to_dict(orient='records'), aspects, classifier)
+    # df_updated = pd.DataFrame(updated_data)
+
+    return updated_data
+
 
 def pipeline_summarization(model, df_sentiment):
     result = {"category":[], "sentiment":[], "summary":[]}
