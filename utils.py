@@ -6,7 +6,7 @@ import torch
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import seaborn as sns
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, AutoModelForSequenceClassification, pipeline
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification, pipeline
 
 class RestaurantTopicAnalyzer:
     def __init__(self, similarity_threshold = 0.3, device = None, embedding_model=None):
@@ -180,32 +180,28 @@ def pipeline_sentiment_analysis(model_name, df):
     return updated_data
 
 
-def pipeline_summarization(model, df_sentiment):
+def pipeline_summarization(df_sentiment, model='Qwen/Qwen2.5-1.5B-Instruct'):
     result = {"category":[], "sentiment":[], "summary":[]}
 
-    t5_small_tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-small")
-    t5_small_model = AutoModelForSeq2SeqLM.from_pretrained("google-t5/t5-small")
+    qwen_model = AutoModelForCausalLM.from_pretrained(model, device_map='auto')
+    qwen_tokenizer = AutoTokenizer.from_pretrained(model)
 
     for category in df_sentiment['category'].unique():
     # Get each sentiment for the category
         for sentiment in ['Positive', 'Negative', 'Neutral']:
-            prompt = "Summarize: "
+            prompt = "Summarize the following reviews to give out the aspects that it talks most about:\n"
             
             for text in tqdm(df_sentiment[df_sentiment['sentiment_' + category] == sentiment]['text']):
                 prompt += text + "\n"
                 
-            # text_chunks = [prompt[i:i + 512] for i in range(0, len(prompt), 512)]
             full_summary = ""
             
-            # for chunk in text_chunks:
-            inputs = t5_small_tokenizer(prompt, return_tensors='pt', max_length=512, truncation=True).to('gpu' if torch.device() else 'cpu')
+            inputs = qwen_tokenizer(prompt, return_tensors='pt').to('cuda' if torch.cuda.is_available() else 'cpu')
             
             with torch.no_grad():
-                outputs = t5_small_model.generate(**inputs, max_length=50, min_length=10, 
-                                                        length_penalty=2.0, num_beams=4, 
-                                                        early_stopping=True)
+                outputs = qwen_model.generate(**inputs, max_new_tokens=100)
             
-            full_summary += t5_small_tokenizer.decode(outputs[0], skip_special_tokens=True).strip() + " "
+            full_summary = qwen_tokenizer.decode(outputs[:, inputs['input_ids'].shape[-1]:][0], skip_special_tokens=True).strip() + " "
 
             result['category'].append(category)
             result['sentiment'].append(sentiment)
