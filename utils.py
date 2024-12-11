@@ -7,9 +7,10 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import seaborn as sns
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification, pipeline
+from sklearn.cluster import KMeans
 
 class RestaurantTopicAnalyzer:
-    def __init__(self, similarity_threshold = 0.3, device = None, embedding_model=None):
+    def __init__(self, similarity_threshold=0.3, device=None, embedding_model=None):
         if device is None:
             self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         else:
@@ -37,21 +38,32 @@ class RestaurantTopicAnalyzer:
             )
         }
         
-        self.category_embeddings = {
-            category: self.model.encode(description, convert_to_tensor=True, device=self.device)
-            for category, description in self.categories.items()
-        }
+        self.category_embeddings = np.array([
+            self.model.encode(description, convert_to_tensor=True, device=self.device).cpu().numpy()
+            for description in self.categories.values()
+        ])
+        
+        self.kmeans = KMeans(
+            n_clusters=len(self.categories),
+            init=self.category_embeddings,
+            n_init=1
+        )
+        
+        self.cluster_to_category = {i: cat for i, cat in enumerate(self.categories.keys())}
 
     def get_topics(self, text):
         try:
-            text_embedding = self.model.encode(text, convert_to_tensor=True, device=self.device)
+            text_embedding = self.model.encode(text, convert_to_tensor=True, device=self.device).cpu().numpy()
+            text_embedding = text_embedding.reshape(1, -1)
+            
+            cluster = self.kmeans.predict(text_embedding)[0]
+            primary_category = self.cluster_to_category[cluster]
             
             similarities = {}
-            for category, cat_embedding in self.category_embeddings.items():
-                text_embedding = text_embedding.to(self.device)
-                cat_embedding = cat_embedding.to(self.device)
-                
-                similarity = float(torch.cosine_similarity(text_embedding, cat_embedding, dim=0))
+            for category, description in self.categories.items():
+                cat_embedding = self.model.encode(description, convert_to_tensor=True, device=self.device).cpu().numpy()
+                similarity = float(np.dot(text_embedding, cat_embedding) / 
+                                (np.linalg.norm(text_embedding) * np.linalg.norm(cat_embedding)))
                 similarities[category] = similarity
             
             relevant_topics = {
@@ -60,9 +72,8 @@ class RestaurantTopicAnalyzer:
                 if score > self.similarity_threshold
             }
             
-            if not relevant_topics:
-                max_category = max(similarities.items(), key=lambda x: x[1])
-                relevant_topics = {max_category[0]: max_category[1]}
+            if primary_category not in relevant_topics:
+                relevant_topics[primary_category] = similarities[primary_category]
             
             return relevant_topics
         
@@ -71,7 +82,18 @@ class RestaurantTopicAnalyzer:
             print(f"Error message: {str(e)}")
             return {}
 
-    def analyze_dataframe(self, df, text_column = 'text'):
+    def fit(self, texts):
+        embeddings = np.array([
+            self.model.encode(text, convert_to_tensor=True, device=self.device).cpu().numpy()
+            for text in tqdm(texts, desc="Encoding texts")
+        ])
+        
+        self.kmeans.fit(embeddings)
+        return self
+
+    def analyze_dataframe(self, df, text_column='text'):
+        self.fit(df[text_column].values)
+        
         result_df = df.copy()
         
         for category in self.categories.keys():
@@ -84,7 +106,7 @@ class RestaurantTopicAnalyzer:
         result_df['primary_score'] = 0.0
         
         print(f"Analyzing texts on {self.device}...")
-        for idx in tqdm(range(len(df))):
+        for idx in tqdm(range(len(df)), desc="Analyzing texts"):
             text = str(df.iloc[idx][text_column])
             topics = self.get_topics(text)
             
@@ -101,54 +123,6 @@ class RestaurantTopicAnalyzer:
                 result_df.at[idx, 'primary_score'] = primary_topic[1]
         
         return result_df
-
-    def generate_analysis_report(self, df):
-        topic_columns = [col for col in df.columns if col.startswith('topic_') and col != 'topic_count']
-        
-        topic_distribution = {
-            col.replace('topic_', ''): df[col].sum()
-            for col in topic_columns
-        }
-        
-        primary_topic_dist = df['primary_topic'].value_counts().to_dict()
-        
-        avg_scores = {
-            col.replace('score_', ''): df[col].mean()
-            for col in df.columns if col.startswith('score_')
-        }
-        
-        return {
-            'total_texts': len(df),
-            'topic_distribution': topic_distribution,
-            'primary_topic_distribution': primary_topic_dist,
-            'avg_scores': avg_scores,
-            'avg_topics_per_text': df['topic_count'].mean()
-        }
-
-    def plot_topic_distribution(self, df):
-        plt.figure(figsize=(12, 5))
-        
-        plt.subplot(1, 2, 1)
-        topic_columns = [col for col in df.columns if col.startswith('topic_') and col != 'topic_count']
-        topic_counts = [df[col].sum() for col in topic_columns]
-        topic_names = [col.replace('topic_', '') for col in topic_columns]
-        
-        sns.barplot(x=topic_names, y=topic_counts)
-        plt.title('All Topics Distribution')
-        plt.xlabel('Topics')
-        plt.ylabel('Count')
-        plt.xticks(rotation=45)
-        
-        plt.subplot(1, 2, 2)
-        primary_topic_counts = df['primary_topic'].value_counts()
-        sns.barplot(x=primary_topic_counts.index, y=primary_topic_counts.values)
-        plt.title('Primary Topic Distribution')
-        plt.xlabel('Topics')
-        plt.ylabel('Count')
-        plt.xticks(rotation=45)
-        
-        plt.tight_layout()
-        plt.show()
 
 def extract_aspect_sentiments(dataset, aspects, classifier, max_length=50):
     for row in tqdm(dataset, desc="Processing rows", unit="row"):
@@ -175,19 +149,21 @@ def pipeline_sentiment_analysis(model_name, df):
     aspects = ["food", "place", "price", "service"]
 
     updated_data = extract_aspect_sentiments(df.to_dict(orient='records'), aspects, classifier)
-    # df_updated = pd.DataFrame(updated_data)
-
-    return updated_data
+    df_updated = pd.DataFrame(updated_data)
+    df_updated.to_csv("temp-sentiment-analysis.csv")
+    return df_updated
 
 
 def pipeline_summarization(df_sentiment, model='Qwen/Qwen2.5-1.5B-Instruct'):
     result = {"category":[], "sentiment":[], "summary":[]}
 
-    qwen_model = AutoModelForCausalLM.from_pretrained(model, device_map='auto')
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    qwen_model = AutoModelForCausalLM.from_pretrained(model)
+    qwen_model = qwen_model.to(device)
     qwen_tokenizer = AutoTokenizer.from_pretrained(model)
 
-    for category in df_sentiment['category'].unique():
-    # Get each sentiment for the category
+    for category in df_sentiment['primary_topic'].unique():
         for sentiment in ['Positive', 'Negative', 'Neutral']:
             prompt = "Summarize the following reviews to give out the aspects that it talks most about:\n"
             
@@ -196,7 +172,8 @@ def pipeline_summarization(df_sentiment, model='Qwen/Qwen2.5-1.5B-Instruct'):
                 
             full_summary = ""
             
-            inputs = qwen_tokenizer(prompt, return_tensors='pt').to('cuda' if torch.cuda.is_available() else 'cpu')
+            inputs = qwen_tokenizer(prompt, return_tensors='pt')
+            inputs = {k: v.to(device) for k, v in inputs.items()}
             
             with torch.no_grad():
                 outputs = qwen_model.generate(**inputs, max_new_tokens=100)
@@ -206,3 +183,5 @@ def pipeline_summarization(df_sentiment, model='Qwen/Qwen2.5-1.5B-Instruct'):
             result['category'].append(category)
             result['sentiment'].append(sentiment)
             result['summary'].append(full_summary)
+    
+    return pd.DataFrame(result)
