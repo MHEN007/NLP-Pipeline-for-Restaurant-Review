@@ -146,7 +146,19 @@ if __name__ == "__main__":
             "https://www.zomato.com/varanasi/pizzeria-vatika-cafe-nadesar/reviews",
             "https://www.zomato.com/varanasi/holy-chopsticks-nadesar/reviews",
             "https://www.zomato.com/the3rdfloorbse/reviews",
-            "https://www.zomato.com/varanasi/de-once-more-lanka/reviews"]
+            "https://www.zomato.com/varanasi/de-once-more-lanka/reviews",
+            "https://www.zomato.com/agra/paatra-jaypee-palace-hotel-tajganj/reviews",
+            "https://www.zomato.com/agra/jhankar-the-gateway-hotel-tajganj/reviews",
+            "https://www.zomato.com/agra/peshawri-itc-mughal-tajganj/reviews",
+            "https://www.zomato.com/agra/oasis-radisson-hotel-agra-tajganj/reviews",
+            "https://www.zomato.com/agra/maikhana-itc-mughal-1-tajganj/reviews",
+            "https://www.zomato.com/guntur/ice-berg-brodipet/reviews",
+            "https://www.zomato.com/guntur/orion-1-srinivasa-nagar-colony/reviews",
+            "https://www.zomato.com/guntur/hotel-subhani-original-srinivasarao-pet/reviews",
+            "https://www.zomato.com/guntur/naidu-gari-kunda-biryani-tenali-locality/reviews",
+            "https://www.zomato.com/guntur/hungry-daddy-srinivasa-nagar-colony/reviews",
+            "https://www.zomato.com/guntur/la-pinoz-pizza-lakshmipuram/reviews",
+            "https://www.zomato.com/guntur/hotel-subhani-original-srinivasarao-pet/reviews"]
     
     # Scrape reviews
     reviews_df = scraper.scrape_reviews(urls, max_pages=10)

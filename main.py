@@ -9,7 +9,7 @@ def pipeline(modelA, modelB, modelC, dataset):
 
     analyzer = utils.RestaurantTopicAnalyzer(
         similarity_threshold=0.3,
-        device='mps' if torch.backends.mps.is_available() else 'cpu',
+        device=device,
         embedding_model=modelA
     )
     
