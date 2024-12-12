@@ -136,6 +136,14 @@ def extract_aspect_sentiments(dataset, aspects, classifier, max_length=50):
                 row[f'sentiment_{aspect}'] = "Not Found"
     return dataset
 
+def generate_chart(df, aspects):
+    sentiment = ["Positive", "Negative", "Neutral", "Not Found"]
+    for aspect in aspects:
+        y = np.array([df[df[f'sentiment_{aspect}'] == s].shape[0] for s in sentiment])
+        plt.pie(y, labels = sentiment)
+        plt.legend(title = aspect)
+        plt.show() 
+
 def pipeline_sentiment_analysis(model_name, df):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # print(f"Using device: {device}")
@@ -149,6 +157,9 @@ def pipeline_sentiment_analysis(model_name, df):
     aspects = ["food", "place", "price", "service"]
 
     updated_data = extract_aspect_sentiments(df.to_dict(orient='records'), aspects, classifier)
+    
+    generate_chart(pd.DataFrame(updated_data), aspects)
+    
     df_updated = pd.DataFrame(updated_data)
     df_updated.to_csv("temp-sentiment-analysis.csv")
     return df_updated
