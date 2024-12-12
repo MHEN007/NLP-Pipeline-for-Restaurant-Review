@@ -14,3 +14,6 @@
 
 ## What is in this Repository
 The main.py is the main driver for the pipeline. Datasets used for benchmarking and experiments are given in the Datasets folder. Notebooks contain experiments for each step of the pipeline and also the notebook version of the driver that was run on Kaggle for GPU support.
+
+## Inference Demo Video Link
+Link Video: [Click Here](https://youtu.be/lAnuMrmvwr8)
